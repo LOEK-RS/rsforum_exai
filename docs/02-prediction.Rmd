@@ -1,0 +1,61 @@
+---
+title: "Prediction Possibilities"
+author: "Marvin Ludwig"
+date: '2022-01-19'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+source("setup.R")
+```
+
+```{r}
+observations = st_read("data/observations/aqbench.gpkg", quiet = TRUE)
+model_all = readRDS("data/models/m01_hyperparameter_tuning.RDS")
+model_simple = readRDS("data/models/m02_hyperparameter_tuning_simple.RDS")
+predictors = read_stars("data/predictors/predictors.grd")
+predictor_subset = st_read("data/observations/global_sample.gpkg", quiet = TRUE)
+```
+
+
+
+# Standard Prediction
+
+```{r}
+global_o3 = predict(predictors, model_simple)
+plot(global_o3, col = mako(11))
+```
+
+
+# Predict outcome of individual trees
+
+```{r}
+all_trees = predict(object = model_simple$finalModel, data = predictor_subset %>% st_drop_geometry(),
+        predict.all = TRUE)
+
+predictor_subset = predictor_subset %>%
+    mutate(prediction_sd = apply(all_trees$predictions, 1, sd))
+
+plot(predictor_subset["prediction_sd"], pch = 15, pal = plasma)
+```
+
+
+
+
+```{r}
+all_trees = predict(object = model_all$finalModel, data = predictor_subset %>% st_drop_geometry(),
+        predict.all = TRUE)
+
+predictor_subset = predictor_subset %>%
+    mutate(prediction_sd = apply(all_trees$predictions, 1, sd))
+
+plot(predictor_subset["prediction_sd"], pch = 15, pal = plasma)
+```
+
+
+
+
+
+
+

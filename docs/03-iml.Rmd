@@ -1,0 +1,155 @@
+---
+title: "iml Package"
+author: "Marvin Ludwig"
+date: '2022-01-20'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+source("setup.R")
+```
+
+
+```{r}
+observations = st_read("data/observations/aqbench.gpkg", quiet = TRUE)
+model_simple = readRDS("data/models/m02_hyperparameter_tuning_simple.RDS")
+predictors = read_stars("data/predictors/predictors.grd")
+predictor_subset = st_read("data/observations/global_sample.gpkg", quiet = TRUE)
+
+selected_predictors = c("alt", "nox_emissions", "shrublands_25km" , "max_population_density_5km",
+                        "water_25km", "no2_column", "rice_production", "forests_25km", "croplands_25km")
+
+```
+
+# Interpretable Machine Learning
+
+
+## Feature Importance
+
+
+```{r}
+library(iml)
+
+#observations = observations %>% slice_sample(n = 1500)
+
+observations = observations %>% st_drop_geometry() %>% 
+    select(all_of(c(selected_predictors, "o3_average_values")))
+
+
+p = Predictor$new(model = model_simple, data = observations, y = "o3_average_values")
+
+fi = FeatureImp$new(p, loss = "rmse")
+print(fi)
+plot(fi)
+
+
+fi = FeatureImp$new(p, loss = "rmse", compare = "difference")
+plot(fi)
+```
+
+
+## Partial Dependcy Plots
+
+
+```{r}
+partialDepPlot = FeatureEffects$new(p, method = "pdp")
+plot(partialDepPlot)
+```
+
+
+## Accumulated Local Effect Plots
+
+```{r}
+accumLocalEffect = FeatureEffects$new(p, method = "ale")
+plot(accumLocalEffect)
+```
+
+
+## Individual Conditional Expectation Curve
+
+
+```{r}
+p_sample = Predictor$new(model = model_simple, data = observations %>% slice_sample(n = 50), y = "o3_average_values")
+ice = FeatureEffects$new(p_sample, method = "ice")
+plot(ice)
+```
+
+
+## Surrogate Model
+
+```{r}
+tree <- TreeSurrogate$new(p, maxdepth = 2)
+plot(tree)
+
+```
+
+
+
+
+
+
+
+## LIME
+
+### Extreme Values
+
+```{r}
+lime_min = LocalModel$new(p, x.interest = observations[c(3764),])
+plot(lime_min)
+
+
+lime_max = LocalModel$new(p, x.interest = observations[c(311),])
+plot(lime_max)
+
+
+hist(observations$alt)
+
+
+lime_max_alt = LocalModel$new(p, x.interest = observations[c(302),])
+observations[c(302),]
+plot(lime_max_alt)
+
+```
+
+
+
+
+### Different Continents
+
+
+```{r}
+lime_germany = LocalModel$new(p, x.interest = observations[c(1),])
+lime_antarctica = LocalModel$new(p, x.interest = observations[c(314),])
+
+plot(lime_germany)
+plot(lime_antarctica)
+
+
+lime_usa = LocalModel$new(p, x.interest = observations[c(2927),])
+plot(lime_usa)
+
+lime_japan = LocalModel$new(p, x.interest = observations[c(4317),])
+plot(lime_japan)
+
+
+```
+
+
+
+### Altitude vs. Ozon
+
+
+```{r}
+
+ggplot(observations, aes(x = alt, y = o3_average_values))+
+    geom_point(size = 0.5)+
+    geom_smooth(method = "lm")
+
+```
+
+
+
+
+
+

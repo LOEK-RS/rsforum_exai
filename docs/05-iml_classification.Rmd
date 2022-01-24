@@ -1,0 +1,104 @@
+---
+title: "iml Package"
+author: "Marvin Ludwig"
+date: '2022-01-20'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+source("setup.R")
+```
+
+
+```{r}
+observations = readRDS("data/classification/data_combined_ll.RDS")
+observations = observations %>% filter(Region == "Muenster")
+
+
+predictors = read_stars("data/classification/Sen_Muenster_sub.grd")
+
+selected_predictors = c("B02", "B03", "B04", "B08",
+                    "B06", "B11", "NDVI", "NDVI_5x5_sd")
+
+
+model = readRDS("data/models/m03_classification.RDS")
+
+
+```
+
+# Interpretable Machine Learning
+
+
+## Feature Importance
+
+
+```{r}
+library(iml)
+
+observations = observations %>% slice_sample(n = 1500)
+
+observations = observations %>% 
+    select(all_of(c(selected_predictors, "Label")))
+
+
+p = Predictor$new(model = model, data = observations, y = "Label")
+
+fi = FeatureImp$new(p, loss = "ce")
+print(fi)
+plot(fi)
+
+
+fi = FeatureImp$new(p, loss = "ce", compare = "difference")
+plot(fi)
+```
+
+
+## Partial Dependency Plots
+
+
+```{r}
+partialDepPlot = FeatureEffect$new(p, method = "pdp", feature = "NDVI")
+plot(partialDepPlot)
+```
+
+
+## Accumulated Local Effect Plots
+
+```{r}
+accumLocalEffect = FeatureEffects$new(p, method = "ale", feature = "B08")
+plot(accumLocalEffect)
+```
+
+
+## Surrogate Model
+
+```{r}
+tree <- TreeSurrogate$new(p, maxdepth = 3)
+plot(tree)
+
+```
+
+
+
+
+
+## LIME
+
+```{r}
+lime_water = LocalModel$new(p, x.interest = observations[c(150),])
+plot(lime_water)
+
+
+lime_urban = LocalModel$new(p, x.interest = observations[c(2000),])
+plot(lime_urban)
+
+
+lime_grass = LocalModel$new(p, x.interest = observations[c(3000),])
+plot(lime_grass)
+
+
+```
+
+
+

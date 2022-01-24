@@ -1,0 +1,77 @@
+---
+title: "Classification Model"
+author: "Marvin Ludwig"
+date: '2022-01-24'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("setup.R")
+```
+
+
+
+```{r}
+observations = readRDS("data/classification/data_combined_ll.RDS")
+observations = observations %>% filter(Region == "Muenster")
+
+
+predictors = read_stars("data/classification/Sen_Muenster_sub.grd")
+
+plot(predictors, join_zlim = FALSE, col = viridis::mako(11))
+
+selected_predictors = c("B02", "B03", "B04", "B08",
+                    "B06", "B11", "NDVI", "NDVI_5x5_sd")
+
+
+```
+
+
+## Classification Model
+
+```{r}
+
+model_cl = caret::train(x = observations %>%
+                            dplyr::select(all_of(selected_predictors)),
+                        y = observations %>%
+                            pull("Label"),
+                        method = "ranger",
+                        tuneGrid = expand.grid(splitrule = "gini",
+                              mtry = 2,
+                              min.node.size = 5),
+                        trControl = trainControl(method = "cv", number = 10, savePredictions = "final"),
+                        num.trees = 100,
+                        importance = "permutation",
+                        local.importance = TRUE)
+
+model_cl
+saveRDS(model_cl, "data/models/m03_classification.RDS")
+```
+
+
+
+
+```{r}
+lcc = predict(predictors, model_cl)
+plot(lcc)
+```
+
+
+
+
+```{r}
+
+# Water
+observations[150,]
+
+# Urban
+observations[2000,]
+
+# Grassland
+observations[3000,]
+
+```
+
+
+

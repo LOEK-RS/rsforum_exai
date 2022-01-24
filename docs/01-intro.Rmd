@@ -1,0 +1,191 @@
+---
+title: "AQ-Bench Data Exploration"
+author: "Marvin Ludwig"
+date: '2022-01-19'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+source("setup.R")
+```
+
+# AQ-Bench
+
+```{r}
+observations = st_read("data/observations/aqbench.gpkg", quiet = TRUE)
+
+names(observations)
+
+tm_shape(countries)+
+    tm_polygons()+
+    tm_shape(observations)+
+    tm_dots()+
+    tm_layout(frame = FALSE)
+```
+
+
+
+```{r}
+predictors = read_stars("data/predictors/predictors.grd")
+plot(predictors, join_zlim = FALSE, col = viridis::mako(11))
+```
+
+
+
+
+# Air Quality Model
+
+## Hyperparameter Tuning
+
+
+```{r}
+library(ranger)
+library(caret)
+
+predictor_names = predictors %>% stars::st_get_dimension_values("band")
+
+hyperparameters = expand.grid(splitrule = "variance",
+                              mtry = seq(2,20,2),
+                              min.node.size = seq(5,25,5))
+
+if(FALSE){
+    model_randomcv = caret::train(x = observations %>%
+                                      st_drop_geometry() %>%
+                                      select(all_of(predictor_names)),
+                              y = observations %>%
+                                  st_drop_geometry() %>%
+                                  pull("o3_average_values"),
+                              method = "ranger",
+                              tuneGrid = hyperparameters,
+                              trControl = trainControl(method = "cv", number = 10),
+                              num.trees = 100)
+}
+
+model_randomcv = readRDS("data/models/m01_hyperparameter_tuning.RDS")
+model_randomcv
+plot(model_randomcv)
+```
+
+
+## Variable Importance
+
+```{r}
+hyperparameters = model_randomcv$bestTune
+
+model_randomcv = caret::train(x = observations %>%
+                                  st_drop_geometry() %>%
+                                  select(all_of(predictor_names)),
+                              y = observations %>%
+                                  st_drop_geometry() %>%
+                                  pull("o3_average_values"),
+                              method = "ranger",
+                              tuneGrid = hyperparameters,
+                              trControl = trainControl(method = "cv", number = 10, savePredictions = "final"),
+                              num.trees = 100,
+                              importance = "permutation",
+                              local.importance = TRUE)
+
+
+plot(varImp(model_randomcv, scale = FALSE))
+```
+
+
+## Variable Importance for specific observations
+
+ranger implements the Case-Specific Random Forest Methods [Xu et al. 2016](https://www.tandfonline.com/doi/abs/10.1080/10618600.2014.983641) for local importance.
+
+
+```{r}
+tm_shape(countries)+
+    tm_polygons()+
+    tm_shape(observations[c(1,314),])+
+    tm_bubbles(col = "goldenrod1")+
+    tm_layout(frame = FALSE)
+```
+
+
+```{r}
+local_importance = model_randomcv$finalModel$variable.importance.local %>%
+    as.data.frame() %>% 
+    slice(c(1,314)) %>% 
+    t() %>% 
+    as.data.frame()
+
+local_importance$predictor = row.names(local_importance)
+
+
+grid.arrange(
+ggplot(local_importance, aes(x = X1, y = predictor))+
+    geom_bar(stat = "identity")+
+    theme_bw()+
+    xlab("Germany"),
+ggplot(local_importance, aes(x = X314, y = predictor))+
+    geom_bar(stat = "identity")+
+    theme_bw()+
+    xlab("Antarctica"),
+nrow = 1)
+    
+```
+
+
+
+# Train a simpler model
+
+```{r}
+selected_predictors = c("alt", "nox_emissions", "shrublands_25km" , "max_population_density_5km",
+                        "water_25km", "no2_column", "rice_production", "forests_25km", "croplands_25km")
+
+
+hyperparameters = expand.grid(splitrule = "variance",
+                              mtry = seq(2,9,1),
+                              min.node.size = seq(5,25,5))
+
+if(FALSE){
+    model_simple = caret::train(x = observations %>%
+                                st_drop_geometry() %>%
+                                select(all_of(selected_predictors)),
+                            y = observations %>%
+                                st_drop_geometry() %>%
+                                pull("o3_average_values"),
+                            method = "ranger",
+                            tuneGrid = hyperparameters,
+                            trControl = trainControl(method = "cv", number = 10, savePredictions = "final"),
+                            num.trees = 100,
+                            importance = "permutation",
+                            local.importance = TRUE)
+
+}
+model_simple = readRDS("data/models/m02_hyperparameter_tuning_simple.RDS")
+plot(model_simple)
+
+plot(varImp(model_simple, scale = FALSE))
+```
+
+
+## Local Importance of simpler model
+
+```{r}
+local_importance = model_simple$finalModel$variable.importance.local %>%
+    as.data.frame() %>% 
+    slice(c(1,314)) %>% 
+    t() %>% 
+    as.data.frame()
+
+local_importance$predictor = row.names(local_importance)
+
+
+grid.arrange(
+ggplot(local_importance, aes(x = X1, y = predictor))+
+    geom_bar(stat = "identity")+
+    theme_bw()+
+    xlab("Germany"),
+ggplot(local_importance, aes(x = X314, y = predictor))+
+    geom_bar(stat = "identity")+
+    theme_bw()+
+    xlab("Antarctica"),
+nrow = 1)
+    
+```
+
+
